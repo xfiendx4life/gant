@@ -45,12 +45,26 @@ func (p *Postgres) Create(user *models.User) (id string, err error) {
 		r := p.pool.QueryRow(p.ctx, "INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING id",
 			user.Name, user.Email, user.Password)
 		r.Scan(&user.ID)
+		if user.ID == uuid.Nil {
+			return "", fmt.Errorf("can't get id, maybe the row is already exists")
+		}
 		return user.ID.String(), nil
 	}
 }
 
 func (p *Postgres) Get(email string) (*models.User, error) {
-	return nil, nil
+	select {
+	case <-p.ctx.Done():
+		return nil, fmt.Errorf("done with context")
+	default:
+		r := p.pool.QueryRow(p.ctx, "SELECT * FROM users WHERE email=$1", email)
+		user := models.User{}
+		err := r.Scan(&user.ID, &user.Name, &user.Password, &user.Email)
+		if user.Name == "" || err != nil {
+			return nil, fmt.Errorf("error occured while getting data from db: %s", err)
+		}
+		return &user, nil
+	}
 }
 
 func (p *Postgres) Delete(id uuid.UUID) error {
