@@ -5,8 +5,10 @@ import (
 	"log"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/xfiendx4life/gant/pkg/models"
 	"github.com/xfiendx4life/gant/pkg/user/storage"
 )
@@ -68,4 +70,36 @@ func TestGet(t *testing.T) {
 	assert.Equal(t, testUser.Name, user.Name)
 	assert.Equal(t, testUser.Email, user.Email)
 	assert.Equal(t, testUser.Password, user.Password)
+}
+
+func TestDelete(t *testing.T) {
+	st, err := storage.New(context.Background(),
+		"postgresql://localhost:5432/test_diagram?user=test&password=123")
+	defer clean()
+	assert.NoError(t, err)
+	cleaner.QueryRow(context.Background(),
+		"INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING id",
+		testUser.Name, testUser.Email, testUser.Password)
+	err = st.Delete(testUser.Email)
+	assert.NoError(t, err)
+}
+
+func TestEdit(t *testing.T) {
+	st, err := storage.New(context.Background(),
+		"postgresql://localhost:5432/test_diagram?user=test&password=123")
+	defer clean()
+	assert.NoError(t, err)
+	row := cleaner.QueryRow(context.Background(),
+		"INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING id",
+		testUser.Name, testUser.Email, testUser.Password)
+	var id uuid.UUID
+	row.Scan(&id)
+	err = st.Edit(id, map[string]string{"name": "editedName", "password": "editedPassword"})
+	require.NoError(t, err)
+	row = cleaner.QueryRow(context.Background(), "SELECT name, password FROM users WHERE email=$1",
+		testUser.Email)
+	var checkName, checkPass string
+	row.Scan(&checkName, &checkPass)
+	assert.Equal(t, "editedName", checkName)
+	assert.Equal(t, "editedPassword", checkPass)
 }

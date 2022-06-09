@@ -8,6 +8,6 @@ import (
 type UserStorage interface {
 	Create(user *models.User) (id string, err error)
 	Get(email string) (*models.User, error)
-	Delete(id uuid.UUID) error
-	Edit(id uuid.UUID) error
+	Delete(email string) error
+	Edit(id uuid.UUID, data map[string]string) error
 }

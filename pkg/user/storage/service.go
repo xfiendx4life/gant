@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,6 +14,18 @@ import (
 type Postgres struct {
 	pool *pgxpool.Pool
 	ctx  context.Context
+}
+
+type doneWithContext struct {
+	status string
+}
+
+func (d *doneWithContext) Error() string {
+	return d.status
+}
+
+var simpleContextError = &doneWithContext{
+	status: "done with context",
 }
 
 // Creates new connection with config
@@ -39,7 +52,7 @@ func New(ctx context.Context, uri string) (UserStorage, error) {
 func (p *Postgres) Create(user *models.User) (id string, err error) {
 	select {
 	case <-p.ctx.Done():
-		err = fmt.Errorf("done with context")
+		err = simpleContextError
 		return
 	default:
 		r := p.pool.QueryRow(p.ctx, "INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING id",
@@ -55,7 +68,7 @@ func (p *Postgres) Create(user *models.User) (id string, err error) {
 func (p *Postgres) Get(email string) (*models.User, error) {
 	select {
 	case <-p.ctx.Done():
-		return nil, fmt.Errorf("done with context")
+		return nil, simpleContextError
 	default:
 		r := p.pool.QueryRow(p.ctx, "SELECT * FROM users WHERE email=$1", email)
 		user := models.User{}
@@ -67,10 +80,33 @@ func (p *Postgres) Get(email string) (*models.User, error) {
 	}
 }
 
-func (p *Postgres) Delete(id uuid.UUID) error {
-	return nil
+func (p *Postgres) Delete(email string) error {
+	select {
+	case <-p.ctx.Done():
+		return simpleContextError
+	default:
+		_, err := p.pool.Exec(p.ctx, "DELETE FROM users WHERE email=$1", email)
+		if err != nil {
+			return fmt.Errorf("can't delete row with email %s: %s", email, err)
+		}
+		return nil
+	}
 }
 
-func (p *Postgres) Edit(id uuid.UUID) error {
-	return nil
+func (p *Postgres) Edit(id uuid.UUID, data map[string]string) error {
+	select {
+	case <-p.ctx.Done():
+		return simpleContextError
+	default:
+		unpacked := make([]string, 0)
+		for k, v := range data {
+			unpacked = append(unpacked, fmt.Sprintf("%s='%s'", k, v))
+		}
+		prep := "UPDATE users SET " + strings.Join(unpacked, ", ")
+		_, err := p.pool.Exec(p.ctx, prep+"WHERE id=$1", [16]byte(id))
+		if err != nil {
+			return fmt.Errorf("can't change user with id %s: %s", id, err)
+		}
+		return nil
+	}
 }
