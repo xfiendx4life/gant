@@ -85,7 +85,10 @@ func (p *Postgres) Delete(email string) error {
 	case <-p.ctx.Done():
 		return simpleContextError
 	default:
-		_, err := p.pool.Exec(p.ctx, "DELETE FROM users WHERE email=$1", email)
+		tag, err := p.pool.Exec(p.ctx, "DELETE FROM users WHERE email=$1", email)
+		if tag.String()[len(tag.String())-1] == '0' {
+			return fmt.Errorf("no row in table with email %s", email)
+		}
 		if err != nil {
 			return fmt.Errorf("can't delete row with email %s: %s", email, err)
 		}

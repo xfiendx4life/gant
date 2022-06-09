@@ -45,6 +45,20 @@ func TestCreate(t *testing.T) {
 	assert.NotNil(t, id)
 }
 
+func TestCreateAlreadyExists(t *testing.T) {
+	st, err := storage.New(context.Background(),
+		"postgresql://localhost:5432/test_diagram?user=test&password=123")
+	defer clean()
+	assert.NoError(t, err)
+	id, err := st.Create(&testUser)
+	assert.NoError(t, err)
+	assert.NotNil(t, id)
+	testUser.ID = uuid.Nil
+	id, err = st.Create(&testUser)
+	assert.Error(t, err)
+	assert.Equal(t, "", id)
+}
+
 func TestCreateWithContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	st, err := storage.New(ctx,
@@ -72,6 +86,15 @@ func TestGet(t *testing.T) {
 	assert.Equal(t, testUser.Password, user.Password)
 }
 
+func TestGetError(t *testing.T) {
+	st, err := storage.New(context.Background(),
+		"postgresql://localhost:5432/test_diagram?user=test&password=123")
+	defer clean()
+	assert.NoError(t, err)
+	_, err = st.Get(testUser.Email)
+	assert.Error(t, err)
+}
+
 func TestDelete(t *testing.T) {
 	st, err := storage.New(context.Background(),
 		"postgresql://localhost:5432/test_diagram?user=test&password=123")
@@ -82,6 +105,15 @@ func TestDelete(t *testing.T) {
 		testUser.Name, testUser.Email, testUser.Password)
 	err = st.Delete(testUser.Email)
 	assert.NoError(t, err)
+}
+
+func TestDeleteError(t *testing.T) {
+	st, err := storage.New(context.Background(),
+		"postgresql://localhost:5432/test_diagram?user=test&password=123")
+	defer clean()
+	require.NoError(t, err)
+	err = st.Delete(testUser.Email)
+	assert.Error(t, err)
 }
 
 func TestEdit(t *testing.T) {
@@ -102,4 +134,24 @@ func TestEdit(t *testing.T) {
 	row.Scan(&checkName, &checkPass)
 	assert.Equal(t, "editedName", checkName)
 	assert.Equal(t, "editedPassword", checkPass)
+}
+
+func TestEdit2(t *testing.T) {
+	st, err := storage.New(context.Background(),
+		"postgresql://localhost:5432/test_diagram?user=test&password=123")
+	defer clean()
+	assert.NoError(t, err)
+	row := cleaner.QueryRow(context.Background(),
+		"INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING id",
+		testUser.Name, testUser.Email, testUser.Password)
+	var id uuid.UUID
+	row.Scan(&id)
+	err = st.Edit(id, map[string]string{"name": "editedName"})
+	require.NoError(t, err)
+	row = cleaner.QueryRow(context.Background(), "SELECT name, password FROM users WHERE email=$1",
+		testUser.Email)
+	var checkName, checkPass string
+	row.Scan(&checkName, &checkPass)
+	assert.Equal(t, "editedName", checkName)
+	assert.Equal(t, testUser.Password, checkPass)
 }
